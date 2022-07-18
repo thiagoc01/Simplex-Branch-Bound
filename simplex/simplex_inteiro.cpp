@@ -102,166 +102,26 @@ int SimplexInteiro::getNumeroProblema(bool deTodos)
     return idProblema;
 }
 
-bool SimplexInteiro::calculaIteracaoSimplex(int iteracao)
+void SimplexInteiro::imprimeInformacao(std::string informacao)
 {
-    if (verificarSolucaoOtima())
-        return true;
-
-    int colunaNumPivo = achaColunaPivo();
-
-    int linhaPivo = achaLinhaPivo(colunaNumPivo);
-
-    if (eIlimitado)
-        return true;
-
-    realizaPivoteamento(linhaPivo, colunaNumPivo);    
-
-    if (semSolucao)
-        return true;
-
-    return false;
-}
-
-void SimplexInteiro::aplicaSimplex(std::vector<int> ondeAdicionar)
-{
-    int iteracao = 1;
-
-    if (eDuasFases)
-    {
-        bool temSegundaFase = iniciaPrimeiraFase(ondeAdicionar);
-
-        if (!temSegundaFase)
-            return;
-    }
-
-    bool fim = false;
-
-    std::cout << std::endl;
-
-    while (!fim)
-    {
-        bool resultado = calculaIteracaoSimplex(iteracao);
-
-        iteracao++;           
-
-        if (resultado)
-            fim = true;
-    }
-
-    if (!semSolucao && !eIlimitado)
-    {
-        std::cout << "Matriz de coeficientes e vetores B e C finais: " << std::endl;
-        std::cout << "====================================================" << std::endl;
-        printMatrizes();
-
-        std::cout << std::endl;
-
-        std::cout << "Variáveis básicas na última iteração: " << std::endl;
-        std::cout << "====================================================" << std::endl;
-
-        auto it = base.begin();
-
-        while (it != base.end())
-        {
-            std::cout << "x" << it->first + 1 << " " << it->second << " " << std::endl;
-            it++;
-        }
-
-        std::cout << std::endl;
-
-        if (!eMaximizacao && solucaoOtima != 0)
-            solucaoOtima *= -1; // A implementação é baseada em maximização. Para obter a solução de uma minimização, basta multiplicar por -1.
-
-        std::cout << "Solução ótima: " << solucaoOtima << std::endl;
-        std::cout << "====================================================" << std::endl;
-    }    
-}
-
-bool SimplexInteiro::iniciaPrimeiraFase(std::vector<int> ondeAdicionar)
-{
-    C_artificial.resize(colunas - numVarArtificiais, 0); // Os coeficientes do problema original são 0
-
-    for (int i = 1 ; i <= numVarArtificiais ; i++) // As variáveis artificiais entram à direita e são 1
-        C_artificial.push_back(1);
-
-    int k = 0;
-
-    for (int i = 0 ; i < linhas ; i++)
-    {
-        for (int j = numVars ; j < colunas ; j++)
-        {
-            if (A[i][j] == 1) // Se há 1 nessa linha, a variável é de folga ou artificial, deve entrar na base.
-            {
-                base.push_back( {j, B[k]} );
-                k++;
-                break;
-            }
-        }
-    } 
-
-    for (int i = 0 ; i < (int) ondeAdicionar.size() ; i++) // Coloca na forma canônica o tableau
-    {
-        for (int j = 0 ; j < colunas ; j++)
-            C_artificial[j] = C_artificial[j] - A[ondeAdicionar[i]][j]; // Pivoteia a função objetivo artificial com as linhas da base que são da variável artificial
-        
-        solucaoOtimaPrimeiraFase -= B[ondeAdicionar[i]];
-    }
-
-    return realizaPrimeiraFase(); // Função objetivo auxiliar criada e matriz A ajustada. Pronto para começar o procedimento da primeira fase.
 
 }
 
-bool SimplexInteiro::realizaPrimeiraFase()
+void SimplexInteiro::imprimeInformacao(double informacao)
 {
-    bool fim = false;
-    int iteracao = 1;
 
-    while ( !fim )
-    {
-        bool resultado = calculaIteracaoSimplex(iteracao);
-        iteracao++;           
-
-        if (resultado)
-            fim = true;
-    }
-
-    double (*funcComp)(double);
-
-    if (solucaoOtimaPrimeiraFase > 0)
-        funcComp = std::floor;
-    else
-        funcComp = std::ceil;
-    
-    auto resultadoComparacaoZero = funcComp(solucaoOtimaPrimeiraFase * 10e5) / 10e5;
-
-    if (resultadoComparacaoZero == 0 || resultadoComparacaoZero == -0) // Problema original tem solução
-    {
-        C_artificial.clear();
-
-        for (int i = 0 ; i < numVarArtificiais ; i++)
-            C.pop_back(); // Remove as variáveis artificiais da função objetivo original
-
-        for (int i = 0 ; i < linhas ; i++)
-        {
-            for (int j = 0 ; j < numVarArtificiais ; j++)
-                A[i].pop_back(); // Remove as variáveis artificiais da função objetivo original
-        }
-
-        colunas = C.size(); // Número de variáveis sem as artificiais
-        
-        eDuasFases = false; // Encerramos a primeira fase
-
-        return true;
-    }
-
-    else
-    {
-        std::cout << "\nO problema não possui solução.\n"; // Não há por que continuar, encerramos
-        std::cout << "====================================================" << std::endl;
-        semSolucao = true;
-        return false;
-    }
 }
+
+void SimplexInteiro::printMatrizes()
+{
+
+}
+
+void SimplexInteiro::printMatrizesFinais()
+{
+    Simplex::printMatrizes();
+}
+
 
 double (*retornaFuncaoComparacao(double solucaoOtima))(double valor)
 {
@@ -278,7 +138,7 @@ void controlaProblemasInteiros(double &solucaoOtimaGlobal, std::vector<double> &
         SimplexInteiro problemaMaisAntigo = fila.front().first; // Pega o problema mais antigo na fila
 
         std::cout << "Problema " << problemaMaisAntigo.getNumeroProblema(false) << std::endl;
-        std::cout << "====================================================" << std::endl;
+        std::cout << "====================================================\n" << std::endl;
         problemaMaisAntigo.aplicaSimplex(fila.front().second); 
 
         fila.pop(); // Remove da fila
@@ -515,3 +375,4 @@ void imprimeSolucaoInteiraFinal(double solucaoOtimaGlobal, std::vector<double> s
 
     std::cout << solucaoOtimaGlobal << std::endl;
 }
+

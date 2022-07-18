@@ -25,7 +25,7 @@ class Simplex
         bool eMaximizacao; // Utilizada para verificar se o problema é de maximização ou não.
         bool semSolucao; // Caso que o problema não possui solução.
         bool eDuasFases; // Verificador se estamos na primeira fase ou na segunda
-        bool tipoProblema;
+        bool tipoProblema; // Indica se o problema é de maximização (true) ou minimização (false)
 
         /**
          * @brief Realiza o cálculo de uma iteração da segunda fase do Simplex.
@@ -61,6 +61,12 @@ class Simplex
         virtual void printMatrizes();
 
         /**
+         * @brief Imprime a matriz A e os vetores B e C da última iteração.
+         * 
+         */
+        virtual void printMatrizesFinais();
+
+        /**
          * @brief Procura pelo coeficiente mais negativo da função objetivo
          * 
          * @return int - O índice da coluna que contém o número mais negativo.
@@ -93,6 +99,29 @@ class Simplex
          */
 
         virtual bool realizaPrimeiraFase();
+
+        /**
+         * @brief Realiza a impressão dos resultados na última iteração
+         * 
+         */
+
+        void realizaImpressaoFinal();
+
+        /**
+         * @brief Imprime a string passada por argumento na tela
+         * 
+         * @param informacao A informação desejada para impressão
+         */
+
+        virtual void imprimeInformacao(std::string informacao);
+
+        /**
+         * @brief Imprime a string passada por argumento na tela
+         * 
+         * @param informacao A informação desejada para impressão
+         */
+
+        virtual void imprimeInformacao(double informacao);
 
     public:
         /**

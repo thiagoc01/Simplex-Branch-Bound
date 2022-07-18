@@ -47,7 +47,16 @@ class SimplexInteiro : public Simplex
 
         static int numTotalProblemas; // Total de problemas ramificados
         int idProblema; // Identificador deste problema
-        bool calculaIteracaoSimplex(int iteracao) override; // Sobrescrição do método da classe Simplex para alteração no output      
+
+        /* Sobrescrição das funções para não impressão de status em cada iteração, evitando poluição da tela */
+        void imprimeInformacao(std::string informacao) override;
+
+        void imprimeInformacao(double informacao) override;
+
+        void printMatrizes() override; 
+
+        void printMatrizesFinais() override;
+              
 
     public:
         /**
@@ -149,30 +158,6 @@ class SimplexInteiro : public Simplex
          * @return int O identificador desse problema ou a quantidade de problemas existentes
          */
         int getNumeroProblema(bool deTodos);
-
-        /**
-         * @brief Sobrescrição da função aplicaSimplex da classe Simplex para alteração no output.
-         *
-         * @param ondeAdicionar Vetor contendo os índices das linhas contendo variáveis artificiais
-         */
-        void aplicaSimplex(std::vector<int> ondeAdicionar) override;
-
-        /**
-         * @brief Sobrescrição da função realizaPrimeiraFase da classe Simplex para alteração no output.
-         * 
-         * @return true Se existe possível solução
-         * @return false Caso contrário
-         */
-        bool realizaPrimeiraFase() override;
-
-        /**
-         * @brief Sobrescrição da função iniciaPrimeiraFase da classe Simplex para alteração no output.
-         * 
-         * @param ondeAdicionar Vetor contendo os índices das linhas contendo variáveis artificiais
-         * @return true Se existe possível solução
-         * @return false Caso contrário
-         */
-        bool iniciaPrimeiraFase(std::vector<int> ondeAdicionar) override;
               
 };
 

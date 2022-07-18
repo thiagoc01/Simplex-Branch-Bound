@@ -57,6 +57,9 @@ Simplex::Simplex (std::vector <std::vector<double>> coeficientes, std::vector<do
                 j++;
             }
         }
+
+        if (base.size() < linhas)
+            throw std::runtime_error("O conjunto de vetores na base é insuficiente para a resolução do problema. Verifique a entrada.");
     }
 }
 
@@ -71,7 +74,7 @@ bool Simplex::calculaIteracaoSimplex(int iteracao)
 
     if (eIlimitado)
     {
-        std::cout << "Solução ilimitada.\n" << std::endl;
+        imprimeInformacao("Solução ilimitada.\n\n");
         return true;
     }
 
@@ -79,58 +82,60 @@ bool Simplex::calculaIteracaoSimplex(int iteracao)
 
     if (semSolucao)
     {
-        std::cout << "O problema não possui solucão.\n";
+        imprimeInformacao("O problema não possui solucão.\n");
         return true;
     }
 
     if (eDuasFases)
     {
-        std::cout << "Matriz de coeficientes e vetores B, C e C auxiliar na iteração " + std::to_string(iteracao) << std::endl;
-        std::cout << "====================================================" << std::endl;
+        imprimeInformacao("Matriz de coeficientes e vetores B, C e C auxiliar na iteração " + std::to_string(iteracao) + "\n");
+        imprimeInformacao("====================================================\n");
     }
 
     else
     {
-       std::cout << "Matriz de coeficientes e vetores B e C na iteração " + std::to_string(iteracao) << std::endl;
-        std::cout << "====================================================" << std::endl;
+        imprimeInformacao("Matriz de coeficientes e vetores B e C na iteração " + std::to_string(iteracao) + "\n");
+        imprimeInformacao("====================================================\n");
     }    
 
     printMatrizes();
 
-    std::cout << std::endl;
+    imprimeInformacao("\n");
 
-    std::cout << "Variáveis básicas na iteração " + std::to_string(iteracao) << std::endl;
-    std::cout << "====================================================" << std::endl;
+    imprimeInformacao("Variáveis básicas na iteração " + std::to_string(iteracao) + "\n");
+    imprimeInformacao("====================================================\n");
 
     auto it = base.begin();
 
     while (it != base.end())
     {
-        std::cout << "x" << it->first + 1 << " " << it->second << " " << std::endl;
+        imprimeInformacao("x");
+        imprimeInformacao(it->first + 1);
+        imprimeInformacao(" ");
+        imprimeInformacao(it->second);
+        imprimeInformacao(" \n");
         it++;
     }
 
-    std::cout << std::endl;
+    imprimeInformacao("\n");
 
     if (eDuasFases)
     {
-        std::cout << "Solução do PPL auxiliar na iteração " + std::to_string(iteracao) << std::endl;
-        std::cout << "====================================================" << std::endl;
-        std::cout << solucaoOtimaPrimeiraFase << std::endl;
-        std::cout << std::endl;
+        imprimeInformacao("Solução do PPL auxiliar na iteração " + std::to_string(iteracao) + "\n");
+        imprimeInformacao("====================================================\n");     
+        imprimeInformacao(solucaoOtimaPrimeiraFase);
+        imprimeInformacao("\n\n");
     }
 
-    std::cout << "Solução do PPL na iteração " + std::to_string(iteracao) << std::endl;
-    std::cout << "====================================================" << std::endl;
+    imprimeInformacao("Solução do PPL na iteração " + std::to_string(iteracao) + "\n");
+    imprimeInformacao("====================================================\n");
 
     if (!eMaximizacao && solucaoOtima != 0)
-        std::cout << solucaoOtima * -1 << std::endl;
+        imprimeInformacao(solucaoOtima * -1);
     else
-        std::cout << solucaoOtima << std::endl;
+        imprimeInformacao(solucaoOtima);
 
-    std::cout << std::endl;
-
-    
+    imprimeInformacao("\n\n");    
 
     return false;
 }
@@ -277,6 +282,7 @@ void Simplex::printMatrizes()
 int Simplex::achaColunaPivo()
 {
     /* Inicializamos tomando a primeira posição como o menor elemento */
+
     int localizacao = 0;
     double menor;
 
@@ -306,8 +312,7 @@ int Simplex::achaColunaPivo()
                 localizacao = i;
             }
         }
-    }
-    
+    }    
 
     return localizacao;
 }
@@ -367,6 +372,9 @@ bool Simplex::iniciaPrimeiraFase(std::vector<int> ondeAdicionar)
         }
     } 
 
+    if (base.size() < linhas)
+            throw std::runtime_error("O conjunto de vetores na base é insuficiente para a resolução do problema. Verifique a entrada.");
+
     for (int i = 0 ; i < (int) ondeAdicionar.size() ; i++) // Coloca na forma canônica o tableau
     {
         for (int j = 0 ; j < colunas ; j++)
@@ -376,7 +384,7 @@ bool Simplex::iniciaPrimeiraFase(std::vector<int> ondeAdicionar)
     }
 
     printMatrizes();
-    std::cout << "\n\n";
+    imprimeInformacao("\n\n");
 
     return realizaPrimeiraFase(); // Função objetivo auxiliar criada e matriz A ajustada. Pronto para começar o procedimento da primeira fase.
 
@@ -395,7 +403,7 @@ bool Simplex::realizaPrimeiraFase()
         if (resultado)
             fim = true;
     }
-    std::cout << "Fim da primeira fase.\n\n";
+    imprimeInformacao("Fim da primeira fase.\n\n\n");
 
     double (*funcComp)(double);
 
@@ -408,9 +416,10 @@ bool Simplex::realizaPrimeiraFase()
 
     if (resultadoComparacaoZero == 0 || resultadoComparacaoZero == -0) // Problema original tem solução
     {
-        std::cout << "O problema possui solução.\n";
-        std::cout << "====================================================\n" << std::endl;
-        std::cout << "Iniciando a segunda fase...\n\n";
+        imprimeInformacao("O problema pode possuir alguma solução.\n\n");
+        imprimeInformacao("====================================================\n\n");
+        imprimeInformacao("Iniciando a segunda fase...\n\n\n");
+
         C_artificial.clear();
 
         for (int i = 0 ; i < numVarArtificiais ; i++)
@@ -444,9 +453,9 @@ void Simplex::aplicaSimplex(std::vector<int> ondeAdicionar)
 
     if (eDuasFases)
     {
-        std::cout << "O método de duas fases deve ser aplicado. Iniciando primeira fase... \n\n";
-        std::cout << "Matriz de coeficientes e vetores B, C e C artificial iniciais: " << std::endl;
-        std::cout << "====================================================" << std::endl;
+        imprimeInformacao("O método de duas fases deve ser aplicado. Iniciando primeira fase... \n\n\n");
+        imprimeInformacao("Matriz de coeficientes e vetores B, C e C artificial iniciais: \n");
+        imprimeInformacao("====================================================\n");
         bool temSegundaFase = iniciaPrimeiraFase(ondeAdicionar);
 
         if (!temSegundaFase)
@@ -455,11 +464,11 @@ void Simplex::aplicaSimplex(std::vector<int> ondeAdicionar)
 
     bool fim = false;
 
-    std::cout << "Matriz de coeficientes e vetores B e C iniciais: " << std::endl;
-    std::cout << "====================================================" << std::endl;
+    imprimeInformacao("Matriz de coeficientes e vetores B e C iniciais: \n");
+    imprimeInformacao("====================================================\n");
     printMatrizes();
 
-    std::cout << std::endl;
+    imprimeInformacao("\n");
 
     while (!fim)
     {
@@ -471,11 +480,16 @@ void Simplex::aplicaSimplex(std::vector<int> ondeAdicionar)
             fim = true;
     }
 
+    realizaImpressaoFinal();     
+}
+
+void Simplex::realizaImpressaoFinal()
+{
     if (!semSolucao && !eIlimitado)
     {
         std::cout << "Matriz de coeficientes e vetores B e C finais: " << std::endl;
         std::cout << "====================================================" << std::endl;
-        printMatrizes();
+        printMatrizesFinais();
 
         std::cout << std::endl;
 
@@ -497,5 +511,20 @@ void Simplex::aplicaSimplex(std::vector<int> ondeAdicionar)
 
         std::cout << "Solução ótima: " << solucaoOtima << std::endl;
         std::cout << "====================================================" << std::endl;
-    }    
+    }   
+}
+
+void Simplex::imprimeInformacao(std::string informacao)
+{
+    std::cout << informacao;
+}
+
+void Simplex::imprimeInformacao(double informacao)
+{
+    std::cout << informacao;
+}
+
+void Simplex::printMatrizesFinais()
+{
+    printMatrizes();
 }
