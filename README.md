@@ -1,7 +1,7 @@
 # Trabalho Final | Programação Linear 2022/1
 
 
-##### Repositório com a implementação do Método Simplex de Duas Fases e do método Branch and Bound para Programação Linear Inteira.
+##### Repositório com a implementação do Método Simplex de Duas Fases e do método Branch and Bound de forma concorrente para Programação Linear Inteira.
 
 
 &nbsp;
@@ -14,10 +14,12 @@ Ao final, ele mostrará a matriz de coeficientes das restrições resultante, be
 coeficientes da função objetivo e as variáveis básicas. Se desejado, pode-se tentar arredondar o problema para variáveis inteiras.
 Utiliza o método Branch and Bound para tal arredondamento. Se o problema inteiro for de variáveis binárias, basta adicionar restrições
 para cada variável do problema da forma canônica, tal que elas sejam menores ou iguais a 1.
+Esse programa utiliza 5 threads baseadas em POSIX para executar o método Branch and Bound.
+Cada uma delas concorre pelos elementos na fila. Após a captura, elas criam problemas e resolvem cada um deles de forma concorrente.
 
 ## Formato da entrada
 
-- tipo do problema (1 se maximizazção, 0 se minimização)
+- tipo do problema (1 se maximização, 0 se minimização)
 - número de variáveis de decisão (exceto folga)
 - número de coeficientes da função objetivo (variáveis de decisão + folga)
 - número de restrições do problema
@@ -68,3 +70,4 @@ Ou utilizando o comando cat.
 $ cat entrada | ./simplex-solver
 ```
 
+### :warning: Certifique-se de que você possui cabeçalhos POSIX para o mutex e conditional_variable
