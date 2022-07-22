@@ -1,5 +1,8 @@
 #include <iostream>
 #include <cmath>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 /**
  * @file simplex_inteiro.cpp
@@ -26,6 +29,21 @@ static std::queue<std::pair<SimplexInteiro, std::vector<int>>> fila; // Fila de 
 static bool (*comparaSolucoesInclusive)(double a, double b); // Caso para a poda por solução inteira e alteração dessa
 static bool (*comparaSolucoesExclusive)(double a, double b); // Caso para a poda por solução menor que a atual
 
+static std::mutex mutexFila; // Mutex para acesso à fila
+static std::mutex mutexSolucao; // Mutex para acesso às variáveis de solução incumbente
+static std::mutex mutexNumProblema; // Mutex para acessar o membro estático da classe SimplexInteiro
+static std::mutex mutexProblemas; // Mutex para alterar o número de problemas em execução
+static std::mutex mutexFim; // Mutex para acessar a variável de fim
+static std::mutex mutexVetorProblemas; // Mutex para acessar o vetor de problemas encerrados
+static std::condition_variable temElemento; // Condicional para avisar que há elemento na fila
+
+static bool fim = false; // Indicador que todos os nós foram podados
+
+int problemasExecutando = 0; // Contador para indicar o número de problemas em aberto
+
+std::vector<std::thread> threads; // Vetor que contém as 5 threads que concorrem pela fila
+
+std::vector<SimplexInteiro> problemasEncerrados; // Vetor que contém todos os problemas encerrados para informação futura
 
 SimplexInteiro::SimplexInteiro(Simplex s, std::vector<std::vector<double>> aOriginal, std::vector<double> bOriginal, std::vector<double> cOriginal) : Simplex(s)
 {
@@ -49,9 +67,6 @@ SimplexInteiro::SimplexInteiro(std::vector <std::vector<double>> coeficientes, s
     this->aOriginal = e.A;
     this->bOriginal = e.B;
     this->cOriginal = e.C;
-
-    this->idProblema = this->numTotalProblemas; // Identificador deste problema
-    this->numTotalProblemas++; // Incrementa o número de problemas executados
 }
 
 std::vector<std::vector<double>> SimplexInteiro::getMatrizAOriginal()
@@ -102,6 +117,37 @@ int SimplexInteiro::getNumeroProblema(bool deTodos)
     return idProblema;
 }
 
+int* SimplexInteiro::getDivisoesProblema()
+{
+    return divisoesProblema;
+}
+
+short int SimplexInteiro::getTipoPoda()
+{
+    return tipoPoda;
+}
+
+void SimplexInteiro::setTipoPoda(int tipo)
+{
+    tipoPoda = tipo;
+}
+
+void SimplexInteiro::setDivisoesProblema(int divisoes[2])
+{
+    divisoesProblema[0] = divisoes[0];
+    divisoesProblema[1] = divisoes[1];
+}
+
+void SimplexInteiro::setNumeroProblema(int id)
+{
+    idProblema = id;
+}
+
+void SimplexInteiro::aumentaQuantidadeProblemas()
+{
+    numTotalProblemas += 2;
+}
+
 void SimplexInteiro::imprimeInformacao(std::string informacao)
 {
 
@@ -122,6 +168,35 @@ void SimplexInteiro::printMatrizesFinais()
     Simplex::printMatrizes();
 }
 
+void SimplexInteiro::realizaImpressaoFinal()
+{
+    Simplex::realizaImpressaoFinal();
+}
+
+void SimplexInteiro::aplicaSimplex(std::vector<int> ondeAdicionar)
+{
+    int iteracao = 1;
+
+    if (eDuasFases)
+    {
+        bool temSegundaFase = iniciaPrimeiraFase(ondeAdicionar);
+
+        if (!temSegundaFase)
+            return;
+    }
+
+    bool fim = false;
+
+    while (!fim)
+    {
+        bool resultado = calculaIteracaoSimplex(iteracao);
+
+        iteracao++;           
+
+        if (resultado)
+            fim = true;
+    }  
+}
 
 double (*retornaFuncaoComparacao(double solucaoOtima))(double valor)
 {
@@ -133,17 +208,44 @@ double (*retornaFuncaoComparacao(double solucaoOtima))(double valor)
 
 void controlaProblemasInteiros(double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal)
 {
-    while (!fila.empty()) // Enquanto houver problema para ser analisado, prossegue na árvore
-    {
-        SimplexInteiro problemaMaisAntigo = fila.front().first; // Pega o problema mais antigo na fila
+    while (true) // Continua até haver problemas na fila
+    {             
+        std::unique_lock<std::mutex> mutexUnico(mutexFila); // Lock para verificar a fila
 
-        std::cout << "Problema " << problemaMaisAntigo.getNumeroProblema(false) << std::endl;
-        std::cout << "====================================================\n" << std::endl;
-        problemaMaisAntigo.aplicaSimplex(fila.front().second); 
+        if (!fila.empty()) // Enquanto houver problema para ser analisado, prossegue na árvore
+        {
+            SimplexInteiro problemaMaisAntigo = fila.front().first; // Pega o problema mais antigo na fila
+            std::vector<int> ondeAdicionar = fila.front().second;
+            fila.pop(); // Remove da fila
 
-        fila.pop(); // Remove da fila
-        verificaSolucaoInteira(problemaMaisAntigo, solucaoOtimaGlobal, solucaoGlobal); // Verifica se irá podar a sub-árvore ou criar novos problemas     
+            mutexUnico.unlock(); // Acessou a fila, libera
+
+            problemaMaisAntigo.aplicaSimplex(ondeAdicionar); // Aplica o Simplex paralelamente
+
+            mutexProblemas.lock();
+            problemasExecutando--; // Simplex aplicado nesse objeto, menos um problema executando
+            mutexProblemas.unlock();        
+            
+            verificaSolucaoInteira(problemaMaisAntigo, solucaoOtimaGlobal, solucaoGlobal); // Verifica se irá podar a sub-árvore ou criar novos problemas
+            continue;            
+        }
+
+        mutexFim.lock();
+
+        if (!fim) // Se não chegou no fim do Branch and Bound, irá aguardar até a fila possuir elementos, caso haja prevalência de threads pelo consumo
+        {
+            mutexFim.unlock();
+            temElemento.wait(mutexUnico, []{ return fila.size() != 0 || fim; });
+        }
+        else // Caso contrário, encerrou. Saímos do while incondicional
+        {
+            mutexFim.unlock();
+            break;
+        }        
     }
+
+    temElemento.notify_one(); // Efetua efeito dominó, para acordar as threads aguardando pela fila com elementos ou pelo fim
+    
 }
 
 bool eInteiro(double num)
@@ -153,12 +255,112 @@ bool eInteiro(double num)
 
 int retornaPosicaoNaoInteiro(std::vector<double> solucao)
 {
-    for (int i = 0 ; i < solucao.size(); i++)
+    for (std::vector<double>::size_type i = 0 ; i < solucao.size(); i++)
     {
         if (!eInteiro(solucao[i])) // Se essa coordenada não é inteira, a solução não é inteira. Retornará o índice dela
             return i;
     }
     return -1;
+}
+
+/**
+ * @brief Reduz a quantidade de problemas executando. Se necessário, altera o estado da variável fim para indicar que todos os nós foram podados.
+ * 
+ */
+
+static void reduzProblemasExecutando()
+{
+    mutexProblemas.lock();
+    if (problemasExecutando == 0)
+    {
+        mutexFim.lock();
+        fim = true;
+        mutexFim.unlock();
+    }
+    mutexProblemas.unlock();
+}
+
+/**
+ * @brief Recebe uma solução inteira e verifica se ela é melhor que a incumbente
+ * 
+ * @param problema O problema que originou a solução
+ * @param solucaoOtimaGlobal Solução incumbente
+ * @param solucaoGlobal Coordenadas da solução incumbente
+ * @param solucaoOtimaTeste Solução do problema a ser testada
+ * @param solucao Coordenadas da solução do problema a ser testada
+ */
+
+static void realizaTratamentoSolucaoInteira(SimplexInteiro problema, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal, double solucaoOtimaTeste, std::vector<double> solucao)
+{
+    mutexSolucao.lock(); // Por tratar de uma variável compartilhada, devemos travar
+
+    /* Se maximização, será a comparação solucaoOtimaGlobal <= solucaoOtimaTeste. Caso contrário, solucaoOtimaGlobal >= solucaoOtimaTeste */
+
+    if (comparaSolucoesInclusive(solucaoOtimaGlobal, solucaoOtimaTeste))
+    {
+        /* Atualiza a solução incumbente */
+        solucaoOtimaGlobal = solucaoOtimaTeste;
+        solucaoGlobal = solucao;
+        mutexSolucao.unlock();
+
+        reduzProblemasExecutando(); 
+
+        problema.setTipoPoda(2); // Poda por ser solução inteira e melhor que a incumbente
+
+        mutexVetorProblemas.lock();
+        problemasEncerrados.push_back(problema);
+        mutexVetorProblemas.unlock();
+
+        return;
+    }
+
+    mutexSolucao.unlock();
+    reduzProblemasExecutando();
+
+    problema.setTipoPoda(3); // Poda por ser solução inteira e pior que a incumbente
+
+    mutexVetorProblemas.lock();
+    problemasEncerrados.push_back(problema);
+    mutexVetorProblemas.unlock();
+}
+
+bool deveRealizarPoda(SimplexInteiro problema, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal, std::vector<double> solucao,
+                                        double solucaoOtimaTeste, int posicaoFracionario)
+{
+    double (*funcComp)(double) = retornaFuncaoComparacao(solucaoOtimaTeste); // Função que será usada para arredondar para cima ou para baixo a solução encontrada
+    bool comparacaoSolucao; // Indicador se a solução encontrada é menor que a solução incumbente
+
+    mutexSolucao.lock();
+
+    if (eInteiro(solucaoOtimaGlobal)) // Se a solução atual é inteira, iremos arredondar a que encontramos para verificação da capacidade de poda.
+        comparacaoSolucao = comparaSolucoesExclusive(funcComp(solucaoOtimaTeste), solucaoOtimaGlobal);
+
+    else // Caso contrário, é uma comparação comum
+        comparacaoSolucao = comparaSolucoesExclusive(solucaoOtimaTeste, solucaoOtimaGlobal);
+    
+    mutexSolucao.unlock();
+
+    if (comparacaoSolucao || problema.getSemSolucao() || problema.getEIlimitado()) // Poda por inviabilidade ou solução pior que a atual
+    {
+        problema.setTipoPoda(1); // Poda por ser uma solução inviável ou pior que a incumbente
+
+        mutexVetorProblemas.lock();
+        problemasEncerrados.push_back(problema);
+        mutexVetorProblemas.unlock();
+
+        reduzProblemasExecutando();
+
+        return true;
+    }
+
+    else if (posicaoFracionario == -1) // Poda de solução inteira encontrada
+    {
+        realizaTratamentoSolucaoInteira(problema, solucaoOtimaGlobal, solucaoGlobal, solucaoOtimaTeste, solucao);
+        
+        return true;
+    }    
+
+    return false;
 }
 
 void verificaSolucaoInteira(SimplexInteiro problema, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal)
@@ -170,10 +372,8 @@ void verificaSolucaoInteira(SimplexInteiro problema, double &solucaoOtimaGlobal,
     std::vector<std::pair<int, double>> base = problema.getBase(); // Retorna as variáveis básicas desse problema após a resolução  
     bool tipoProblema = problema.getTipoProblema(); // Retorna o tipo de problema
     std::vector<double> solucao(numVariaveisCanonica, 0); // Vetor solução contendo zeros
-    double (*funcComp)(double) = retornaFuncaoComparacao(solucaoOtimaTeste); // Função que será usada para arredondar para cima ou para baixo a solução encontrada
-    bool comparacaoSolucao; // Indicador se a solução encontrada é menor que a solução incumbente
 
-    for (int i = 0 ; i < base.size() ; i++)
+    for (std::vector<double>::size_type i = 0 ; i < base.size() ; i++)
     {
         if (base[i].first < numVariaveisCanonica) // Se o índice for menor que o número de variáveis na forma canônica, ele faz parte da forma canônica
             solucao[base[i].first] = base[i].second; // Coloca no vetor de soluções o valor mapeado
@@ -181,40 +381,24 @@ void verificaSolucaoInteira(SimplexInteiro problema, double &solucaoOtimaGlobal,
 
     int posicaoFracionario = retornaPosicaoNaoInteiro(solucao); // Contém a posição da primeira coordenada fracionária encontrada
 
-    if (eInteiro(solucaoOtimaGlobal)) // Se a solução atual é inteira, iremos arredondar a que encontramos para verificação da capacidade de poda.
-        comparacaoSolucao = comparaSolucoesExclusive(funcComp(solucaoOtimaTeste), solucaoOtimaGlobal);
+    if (deveRealizarPoda(problema, solucaoOtimaGlobal, solucaoGlobal, solucao, solucaoOtimaTeste, posicaoFracionario)) 
+        return; // Algum dos três critérios de poda foi atendido
 
-    else // Caso contrário, é uma comparação comum
-        comparacaoSolucao = comparaSolucoesExclusive(solucaoOtimaTeste, solucaoOtimaGlobal);
+    problema.setTipoPoda(0); // 0 = não encerrou
 
-    if (comparacaoSolucao || problema.getSemSolucao() || problema.getEIlimitado()) // Poda por inviabilidade ou solução pior que a atual
-    {
-        std::cout << std::endl << "O problema " << problema.getNumeroProblema(false) << " encerrou por inviabilidade ou por limitação da solução.\n" << std::endl;
+    mutexNumProblema.lock();
 
-        return;
-    }
+    int divisoes[2] = {problema.getNumeroProblema(true), problema.getNumeroProblema(true) + 1}; // Ramificações desse problema
+    problema.setDivisoesProblema(divisoes); // Guarda a informação das ramificações desse nó
+    problema.aumentaQuantidadeProblemas(); // Mais dois novos problemas surgirão
 
-    else if (posicaoFracionario == -1) // Poda de solução inteira encontrada
-    {
-        /* Se maximização, será a comparação solucaoOtimaGlobal <= solucaoOtimaTeste. Caso contrário, solucaoOtimaGlobal >= solucaoOtimaTeste */
+    mutexNumProblema.unlock();
 
-        if (comparaSolucoesInclusive(solucaoOtimaGlobal, solucaoOtimaTeste))
-        {
-            /* Atualiza a solução incumbente */
-            solucaoOtimaGlobal = solucaoOtimaTeste;
-            solucaoGlobal = solucao;
+    mutexVetorProblemas.lock();
+    problemasEncerrados.push_back(problema); // Coloca na marcação de encerramento
+    mutexVetorProblemas.unlock();  
 
-            std::cout << std::endl << "O problema " << problema.getNumeroProblema(false) << " encerrou por ter solução inteira e melhor que a atual.\n" << std::endl;
-            return;
-        }
-        std::cout << std::endl << "O problema " << problema.getNumeroProblema(false) << " encerrou por ter uma solução inteira, porém é pior que a atual.\n" << std::endl;
-        return;
-    }
-    
-    std::cout << std::endl << "O problema " << problema.getNumeroProblema(false) << " irá se dividir nos problemas " << problema.getNumeroProblema(true)
-                << " e " << problema.getNumeroProblema(true) + 1 << std::endl << std::endl;
-
-    criaNovosProblemas(A, B, C, posicaoFracionario, tipoProblema, solucao, solucaoOtimaGlobal, solucaoGlobal);    
+    criaNovosProblemas(A, B, C, posicaoFracionario, tipoProblema, solucao, solucaoOtimaGlobal, solucaoGlobal, divisoes);    
 }
 
 SimplexInteiro retornaProblema(std::vector<std::vector<double>> A, std::vector<double> B, std::vector<double> C, std::vector<double> solucao,
@@ -222,9 +406,9 @@ SimplexInteiro retornaProblema(std::vector<std::vector<double>> A, std::vector<d
 {        
     std::vector<double> novaRestricao; // Nova restrição da ramificação
 
-    for (int j = 0 ; j < A[0].size() ; j++) // Coloca os valores na coluna da nova restrição
+    for (std::vector<double>::size_type j = 0 ; j < A[0].size() ; j++) // Coloca os valores na coluna da nova restrição
     {
-        if (j == posicaoNaoInteiro) // Se a coluna é a da coordenada fracionária, colocamos 1
+        if ((int) j == posicaoNaoInteiro) // Se a coluna é a da coordenada fracionária, colocamos 1
             novaRestricao.push_back(1);            
         else // 0 caso contrário
             novaRestricao.push_back(0);
@@ -242,7 +426,7 @@ SimplexInteiro retornaProblema(std::vector<std::vector<double>> A, std::vector<d
         B.push_back(std::floor(solucao[posicaoNaoInteiro]) + 1);
     }    
 
-    for (int i = 0 ; i < A.size() ; i++) // Coloca 0 para representar a variável de folga nas demais restrições
+    for (std::vector<double>::size_type i = 0 ; i < A.size() ; i++) // Coloca 0 para representar a variável de folga nas demais restrições
         A[i].push_back(0);    
 
     C.push_back(0); // Coloca 0 para representar a variável de folga na função objetivo
@@ -257,12 +441,12 @@ SimplexInteiro retornaProblema(std::vector<std::vector<double>> A, std::vector<d
 
     adicionaVariaveisArtificiais(A, C, tamanhoColuna, A.size(), preparacao);
 
-    SimplexInteiro p(A, B, C, tipoProblema, preparacao.eDuasFases, preparacao.numVarArtificiais, numVariaveisCanonica, e);      
-
+    SimplexInteiro p(A, B, C, tipoProblema, preparacao.eDuasFases, preparacao.numVarArtificiais, numVariaveisCanonica, e);   
+    
     return p;
 }
 
-void criaNovosProblemas(std::vector<std::vector<double>> A, std::vector<double> B, std::vector<double> C, int posicaoNaoInteiro, bool tipoProblema, std::vector<double> solucao, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal)
+void criaNovosProblemas(std::vector<std::vector<double>> A, std::vector<double> B, std::vector<double> C, int posicaoNaoInteiro, bool tipoProblema, std::vector<double> solucao, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal, int divisoes[2])
 {
     /* Cópia dos elementos, pois a criação de p1 irá modificar. */
     auto aOriginal = realizaCopiaProfunda(A);
@@ -274,12 +458,26 @@ void criaNovosProblemas(std::vector<std::vector<double>> A, std::vector<double> 
     std::vector<int> ondeAdicionarP2;
 
     /* Cria os problemas */
-    SimplexInteiro p1 = retornaProblema(A, B, C, solucao, posicaoNaoInteiro, tipoProblema, true, ondeAdicionarP1);
-    SimplexInteiro p2 = retornaProblema(aOriginal, bOriginal, cOriginal, solucao, posicaoNaoInteiro, tipoProblema, false, ondeAdicionarP2);
     
+    SimplexInteiro p1 = retornaProblema(A, B, C, solucao, posicaoNaoInteiro, tipoProblema, true, ondeAdicionarP1);
+    SimplexInteiro p2 = retornaProblema(aOriginal, bOriginal, cOriginal, solucao, posicaoNaoInteiro, tipoProblema, false, ondeAdicionarP2);    
+
+    /* Os IDs dos problemas são os fornecidos para a função, já que a concorrência entre as threads prejudica o mapeamento correto. */
+    p1.setNumeroProblema(divisoes[0]);
+    p2.setNumeroProblema(divisoes[1]);
+
+    mutexProblemas.lock();
+    problemasExecutando += 2; // Aumenta a quantidade de problemas em aberto
+    mutexProblemas.unlock();
+
+    std::unique_lock<std::mutex> mutexUnico(mutexFila); // Trava para colocar problemas na fila
+
     /* Coloca na fila para busca em largura */
+
     fila.push({p1, ondeAdicionarP1});
-    fila.push({p2, ondeAdicionarP2});    
+    fila.push({p2, ondeAdicionarP2});
+
+    temElemento.notify_one(); // Notifica que há problema na fila
 }
 
 void iniciaProblemaInteiro(Simplex simplex, std::vector<std::vector<double>> aOriginal, std::vector<double> bOriginal, std::vector<double> cOriginal, int numVars)
@@ -306,14 +504,29 @@ void iniciaProblemaInteiro(Simplex simplex, std::vector<std::vector<double>> aOr
     
     /* Caso contrário, iremos ramificar o problema original em busca da solução inteira e iniciar o Branch and Bound */
 
+    int idsPrimeiroNos[] = {1, 2};
+    simplexInteiro.aumentaQuantidadeProblemas();
     criaNovosProblemas(simplexInteiro.getMatrizAOriginal(), simplexInteiro.getVetorBOriginal(), simplexInteiro.getVetorCOriginal(),
-                        posicaoFracionario, simplexInteiro.getTipoProblema(), solucao, solucaoOtimaGlobal, solucaoGlobal);
+                        posicaoFracionario, simplexInteiro.getTipoProblema(), solucao, solucaoOtimaGlobal, solucaoGlobal, idsPrimeiroNos);
 
-    /* Chama a função que realiza a busca em largura, ou seja, prossegue na árvore */
-    controlaProblemasInteiros(solucaoOtimaGlobal, solucaoGlobal);
+    /* Cria as 5 threads que irão concorrer pelos problemas na fila, realizando a busca em largura */
+
+    for (int i = 0 ; i < 5 ; i++)
+    {
+        threads.push_back(std::thread(controlaProblemasInteiros, std::ref(solucaoOtimaGlobal), std::ref(solucaoGlobal)));
+        if (!threads[i].joinable())
+        {
+            std::cout << "Ocorreu um erro ao criar a thread " << i + 1 << std::endl; 
+            exit(1);
+        }
+    }
+
+    for (int i = 0 ; i < 5 ; i++)
+        threads[i].join();
 
     /* Exibe os resultados encontrados */
-    imprimeSolucaoInteiraFinal(solucaoOtimaGlobal, solucaoGlobal, numVars);    
+
+    imprimeSolucaoInteiraFinal(solucaoOtimaGlobal, solucaoGlobal, numVars);
 }
 
 void inicializaPonteirosComparacao(SimplexInteiro simplexInteiro, double &solucaoOtimaGlobal)
@@ -337,7 +550,7 @@ int testaSolucaoOriginal(std::vector<std::pair<int, double>> base, std::vector<d
 {
     /* Segue a mesma estratégia da função verificaSolucaoInteira */
     
-    for (int i = 0 ; i < base.size() ; i++)
+    for (std::vector<double>::size_type i = 0 ; i < base.size() ; i++)
     {
         if (base[i].first < numVars)
             solucao[base[i].first] = base[i].second;
@@ -355,7 +568,42 @@ void imprimeSolucaoInteiraFinal(double solucaoOtimaGlobal, std::vector<double> s
 {
     int contadorZero = 0;
 
-    for (int i = 0 ; i < solucaoGlobal.size() ; i++)
+    std::sort(problemasEncerrados.begin(), problemasEncerrados.end(),
+                [](SimplexInteiro s1, SimplexInteiro s2){ return s1.getNumeroProblema(false) < s2.getNumeroProblema(false); });
+
+    std::cout << std::endl;
+
+    for (auto p : problemasEncerrados)
+    {
+        std::cout << "Problema " << p.getNumeroProblema(false) << std::endl;
+
+        if (!p.getEIlimitado() && !p.getSemSolucao())
+        {            
+            std::cout << "====================================================\n" << std::endl;
+
+            p.realizaImpressaoFinal();
+        }
+        
+        else
+            std::cout << "====================================================" << std::endl;
+
+        std::cout << std::endl;
+
+        if (p.getTipoPoda() == 0)
+            std::cout << "O problema " << p.getNumeroProblema(false) << " se dividiu nos problemas " << p.getDivisoesProblema()[0]
+                << " e " << p.getDivisoesProblema()[1] << std::endl << std::endl;
+        
+        else if (p.getTipoPoda() == 1)
+            std::cout << "O problema " << p.getNumeroProblema(false) << " encerrou por inviabilidade ou por limitação da solução.\n" << std::endl;
+
+        else if (p.getTipoPoda() == 2)
+            std::cout << "O problema " << p.getNumeroProblema(false) << " encerrou por ter solução inteira e melhor que a atual.\n" << std::endl;
+
+        else if (p.getTipoPoda() == 3)
+            std::cout << "O problema " << p.getNumeroProblema(false) << " encerrou por ter uma solução inteira, porém é pior que a atual.\n" << std::endl;
+    }
+
+    for (std::vector<double>::size_type i = 0 ; i < solucaoGlobal.size() ; i++)
     {
         if (solucaoGlobal[i] == 0)
             contadorZero++;
@@ -366,7 +614,7 @@ void imprimeSolucaoInteiraFinal(double solucaoOtimaGlobal, std::vector<double> s
 
     std::cout << "Solução ótima inteira para o problema: ";
 
-    for (int i = 0 ; i < solucaoGlobal.size() ; i++)
+    for (std::vector<double>::size_type i = 0 ; i < solucaoGlobal.size() ; i++)
         std::cout << solucaoGlobal[i] << " ";
 
     std::cout << std::endl;

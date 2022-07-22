@@ -105,7 +105,7 @@ class Simplex
          * 
          */
 
-        void realizaImpressaoFinal();
+        virtual void realizaImpressaoFinal();
 
         /**
          * @brief Imprime a string passada por argumento na tela

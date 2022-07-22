@@ -440,8 +440,8 @@ bool Simplex::realizaPrimeiraFase()
 
     else
     {
-        std::cout << "O problema não possui solução.\n"; // Não há por que continuar, encerramos.
-        std::cout << "====================================================" << std::endl;
+        imprimeInformacao("O problema não possui solução.\n");
+        imprimeInformacao("====================================================\n\n");
         semSolucao = true;
         return false;
     }

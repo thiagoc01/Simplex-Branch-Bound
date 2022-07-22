@@ -45,17 +45,18 @@ class SimplexInteiro : public Simplex
         std::vector<double> bOriginal;
         std::vector<double> cOriginal;
 
+        int divisoesProblema[2]; // Guarda a informação de quais nós são filhos desse problema se ele ramificar
+
         static int numTotalProblemas; // Total de problemas ramificados
         int idProblema; // Identificador deste problema
+        short int tipoPoda; // 0 = não ramificou, 1 = inviabilidade/ausência ou ilimitação da solução, 2 = solução inteira incumbente, 3 = solução inteira menor que a incumbente
 
         /* Sobrescrição das funções para não impressão de status em cada iteração, evitando poluição da tela */
         void imprimeInformacao(std::string informacao) override;
 
         void imprimeInformacao(double informacao) override;
 
-        void printMatrizes() override; 
-
-        void printMatrizesFinais() override;
+        void printMatrizes() override;      
               
 
     public:
@@ -158,6 +159,75 @@ class SimplexInteiro : public Simplex
          * @return int O identificador desse problema ou a quantidade de problemas existentes
          */
         int getNumeroProblema(bool deTodos);
+
+        /**
+         * @brief Retorna os IDs das ramificações do problema
+         * 
+         * @return int* o array de 2 posições contendo o nó da esquerda e da direita respectivamente
+         */
+
+        int* getDivisoesProblema();
+
+        /**
+         * @brief Retorna o tipo de poda efetuada no nó
+         * 
+         * @return int O tipo de poda efetuada
+         */
+
+        short int getTipoPoda();
+
+        /**
+         * @brief Configura o tipo de poda do problema
+         * 
+         * @param tipo O tipo de poda do problema
+         */
+
+        void setTipoPoda(int tipo);
+
+        /**
+         * @brief Configura quais nós são filhos desse nó
+         * 
+         * @param divisoes Os IDs dos ramos da esquerda e da direita
+         */
+
+        void setDivisoesProblema(int divisoes[2]);
+
+        /**
+         * @brief Configura o ID desse problema
+         * 
+         * @param id O ID do problema
+         */
+
+        void setNumeroProblema(int id);
+
+        /**
+         * @brief Aumenta a quantidade de problemas criados em 2
+         * 
+         */
+
+        void aumentaQuantidadeProblemas();
+
+        /**
+         * @brief Imprime as matrizes finais chamando a função da classe Simplex
+         * 
+         */
+
+        void printMatrizesFinais() override;
+
+        /**
+         * @brief Realiza a impressão dos resultados finais chamando a função da classe Simplex
+         * 
+         */
+
+        void realizaImpressaoFinal() override;
+
+        /**
+         * @brief Aplica o Simplex sem realizar as impressões de informação na tela
+         * 
+         * @param ondeAdicionar 
+         */
+
+        void aplicaSimplex(std::vector<int> ondeAdicionar) override;
               
 };
 
@@ -196,6 +266,22 @@ void controlaProblemasInteiros(double &solucaoOtimaGlobal, std::vector<double> &
  */
 
 int retornaPosicaoNaoInteiro(std::vector<double> solucao);
+
+/**
+ * @brief Verifica se irá encerrar a sub-árvore seguindo os critérios do Branch and Bound para Programação Linear Inteira
+ * 
+ * @param problema O problema do nó
+ * @param solucaoOtimaGlobal A solução incumbente
+ * @param solucaoGlobal Coordenadas da solução incumbente
+ * @param solucao Coordenadas da solução atual
+ * @param solucaoOtimaTeste Solução ótima desse problema
+ * @param posicaoFracionario Posição da primeira coordenada que não é inteira
+ * @return true Se o nó foi podado
+ * @return false Caso o nó não tenha sido podado. Ele será ramificado
+ */
+
+bool deveRealizarPoda(SimplexInteiro problema, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal, std::vector<double> solucao,
+                                        double solucaoOtimaTeste, int posicaoFracionario);
 
 /**
  * @brief Realiza a poda da sub-árvore conforme a definição do método Branch and Bound ou cria novos problemas se há a possibilidade de encontrar a solução.
@@ -238,7 +324,7 @@ SimplexInteiro retornaProblema(std::vector<std::vector<double>> A, std::vector<d
  */
 
 void criaNovosProblemas(std::vector<std::vector<double>> A, std::vector<double> B, std::vector<double> C,
-                        int posicaoNaoInteiro, bool tipoProblema, std::vector<double> solucao, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal);
+                        int posicaoNaoInteiro, bool tipoProblema, std::vector<double> solucao, double &solucaoOtimaGlobal, std::vector<double> &solucaoGlobal, int divisoes[2]);
 
 /**
  * @brief Realiza a verificação inicial para viabilidade do problema inteiro e o controle dos resultados finais
