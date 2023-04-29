@@ -1,4 +1,4 @@
-# Trabalho Final | Programação Linear 2022/1
+# Simplex para solução de problemas inteiros via Branch and Bound | Trabalho Final | Programação Linear 2022/1
 
 
 ##### Repositório com a implementação do Método Simplex de Duas Fases e do método Branch and Bound de forma concorrente para Programação Linear Inteira.
