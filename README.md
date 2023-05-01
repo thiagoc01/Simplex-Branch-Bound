@@ -41,7 +41,7 @@ Cada uma delas concorre pelos elementos na fila. Após a captura, elas criam pro
 ##### Baixe o código ou clone o repositório com:
 
 ```
-$ git clone https://github.com/thiagoc01/trab3-prog-linear.git
+$ git clone https://github.com/thiagoc01/Simplex-Branch-Bound.git
 ```
 
 ##### Dentro do diretório, digite:
